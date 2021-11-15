@@ -1,0 +1,6 @@
+{
+    "Daemon": {
+        "ReaderHost": "192.168.1.79",
+        "ReaderPort": 4333
+    }
+}

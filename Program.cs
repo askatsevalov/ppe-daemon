@@ -1,78 +1,39 @@
-﻿using NurApiDotNet;
+﻿using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-Boolean running = false;
-
-NurApi? hNur = null;
-
-NurApi.TagStorage tags = new NurApi.TagStorage();
-
-void hNur_ConnectedEvent(object sender, NurApi.NurEventArgs e)
+namespace daemon
 {
-  Console.WriteLine("Connected to reader");
-  hNur.TxLevel = 0;   // Set Tx power to max level
-}
-
-void hNur_DisconnectedEvent(object sender, NurApi.NurEventArgs e)
-{
-  hNur.Connect();
-}
-
-void hNur_InventoryStreamReady(object sender, NurApi.InventoryStreamEventArgs e)
-{
-  try
-  {
-    NurApi.TagStorage intTagStorage = hNur.GetTagStorage();
-    lock (intTagStorage)
+    public class Program
     {
-      for (int i = 0; i < intTagStorage.Count; i++)
-      {
-        NurApi.Tag tag;
-        if (tags.AddTag(intTagStorage[i], out tag))
+        public static async Task Main(string[] args)
         {
-          Console.WriteLine("EPC: {0}, ANT: {1}, RSSI: {2}",
-              tag.GetEpcString(), tag.antennaId, tag.rssi);
+            var builder = new HostBuilder().ConfigureAppConfiguration((hostingContext, config) =>
+            {
+                config.AddEnvironmentVariables();
+                config.AddJsonFile("config.json");
+                if (args != null)
+                {
+                    config.AddCommandLine(args);
+                }
+            })
+            .ConfigureServices((hostContext, services) =>
+            {
+                services.AddOptions();
+                services.Configure<DaemonConfig>(hostContext.Configuration.GetSection("Daemon"));
+
+                services.AddSingleton<IHostedService, Daemon>();
+            })
+            .ConfigureLogging((hostingContext, logging) =>
+            {
+                logging.AddConfiguration(hostingContext.Configuration.GetSection("Logging"));
+                logging.AddConsole();
+            });
+
+            await builder.RunConsoleAsync();
         }
-        else
-        {
-          Console.WriteLine("EPC: {0}, ANT: {1}, RSSI: {2}",
-              tag.GetEpcString(), tag.antennaId, tag.rssi);
-        }
-      }
-      hNur.ClearTags();
     }
-
-    if (e.data.stopped && running)
-    {
-      hNur.StartInventoryStream();
-    }
-  }
-  catch (Exception ex)
-  {
-    Console.WriteLine("Inventory error: " + ex.Message);
-  }
 }
 
-try
-{
-  hNur = new NurApi();
-
-  hNur.ConnectedEvent += new EventHandler<NurApi.NurEventArgs>(hNur_ConnectedEvent);
-  hNur.DisconnectedEvent += new EventHandler<NurApi.NurEventArgs>(hNur_DisconnectedEvent);
-
-  hNur.InventoryStreamEvent += new EventHandler<NurApi.InventoryStreamEventArgs>(hNur_InventoryStreamReady);
-
-  if (!hNur.IsConnected())
-  {
-    throw new Exception("Not connected to reader");
-  }
-
-  hNur.ClearTags();
-  hNur.StartInventoryStream();
-  running = true;
-}
-catch (Exception ex)
-{
-  running = false;
-  Console.WriteLine("Could not initialize NurApi, error: " + ex.ToString());
-  Environment.Exit(-1);
-}
