@@ -1,10 +1,11 @@
 using NurApiDotNet;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System;
+using System.Threading;
+using SocketIOClient;
 
 namespace daemon
 {
@@ -17,6 +18,8 @@ namespace daemon
             _logger = logger;
             _config = config;
         }
+
+        private Timer timer;
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -34,22 +37,29 @@ namespace daemon
                 {
                     hNur.Disconnect();
                 }
-                _logger.LogInformation($"Trying to connect to reader at {_config.Value.ReaderHost}:{_config.Value.ReaderPort}");
+                _logger.LogInformation($"Reader - Trying to connect to reader at {_config.Value.ReaderHost}:{_config.Value.ReaderPort}");
                 hNur.ConnectSocket(_config.Value.ReaderHost, _config.Value.ReaderPort);
 
                 if (!hNur.IsConnected())
                 {
-                    throw new Exception("Not connected to reader");
+                    throw new Exception("Reader - Not connected to reader");
                 }
 
                 hNur.ClearTags();
                 hNur.StartInventoryStream();
                 running = true;
+
+                timer = new Timer(new TimerCallback((object obj) =>
+                {
+                    tags.Clear();
+                }), null, 0, 5000);
+
+                SetupWebSocketClient().Wait();
             }
             catch (Exception ex)
             {
                 running = false;
-                _logger.LogError("Could not initialize NurApi, error: " + ex.ToString());
+                _logger.LogError("Reader - Could not initialize NurApi, error: " + ex.ToString());
                 Environment.Exit(-1);
             }
             return Task.CompletedTask;
@@ -58,6 +68,7 @@ namespace daemon
         public Task StopAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Stopping daemon...");
+            hNur.Disconnect();
             return Task.CompletedTask;
         }
 
@@ -68,20 +79,19 @@ namespace daemon
 
         Boolean running = false;
 
-        NurApi? hNur = null;
+        NurApi hNur = null;
 
         NurApi.TagStorage tags = new NurApi.TagStorage();
 
         void hNur_ConnectedEvent(object sender, NurApi.NurEventArgs e)
         {
-            _logger.LogInformation("Connected to reader");
-            hNur?.SetLogLevel(NurApi.LOG_ERROR);
-            // hNur.TxLevel = 0;   // Set Tx power to max level
+            _logger.LogInformation("Reader - Connected to reader");
+            hNur.TxLevel = 10;
         }
 
         void hNur_DisconnectedEvent(object sender, NurApi.NurEventArgs e)
         {
-            // hNur.Connect();
+            hNur.Connect();
         }
 
         void hNur_InventoryStreamReady(object sender, NurApi.InventoryStreamEventArgs e)
@@ -96,16 +106,16 @@ namespace daemon
                         NurApi.Tag tag;
                         if (tags.AddTag(intTagStorage[i], out tag))
                         {
-                            _logger.LogDebug("New Tag - EPC: {0}, ANT: {1}, RSSI: {2}",
-                                tag.GetEpcString(), tag.antennaId, tag.rssi);
+                            var message = new
+                            {
+                                rfid = tag.GetEpcString(),
+                                controlPointId = _config.Value.ControlPointId
+                            };
+                            _logger.LogInformation(message.rfid);
+                            Task.Run(async () => await webSocketClient.EmitAsync("rfid", message));
                         }
-                        else
-                        {
-                            _logger.LogDebug("Known Tag - EPC: {0}, ANT: {1}, RSSI: {2}",
-                                tag.GetEpcString(), tag.antennaId, tag.rssi);
-                        }
+                        hNur.ClearTags();
                     }
-                    hNur.ClearTags();
                 }
 
                 if (e.data.stopped && running)
@@ -115,8 +125,19 @@ namespace daemon
             }
             catch (Exception ex)
             {
-                _logger.LogError("Inventory error: " + ex.Message);
+                _logger.LogError("Reader - Inventory error: " + ex.Message);
             }
+        }
+
+        private SocketIO webSocketClient = null;
+        private async Task SetupWebSocketClient()
+        {
+            webSocketClient = new SocketIO(_config.Value.GatewayAddress);
+            webSocketClient.OnConnected += (sender, e) =>
+            {
+                _logger.LogInformation("WebSocketClient connected");
+            };
+            await webSocketClient.ConnectAsync();
         }
     }
 }

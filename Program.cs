@@ -19,10 +19,10 @@ namespace daemon
                     config.AddCommandLine(args);
                 }
             })
-            .ConfigureServices((hostContext, services) =>
+            .ConfigureServices((hostingContext, services) =>
             {
                 services.AddOptions();
-                services.Configure<DaemonConfig>(hostContext.Configuration.GetSection("Daemon"));
+                services.Configure<DaemonConfig>(hostingContext.Configuration.GetSection("Daemon"));
 
                 services.AddSingleton<IHostedService, Daemon>();
             })

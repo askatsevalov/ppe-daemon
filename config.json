@@ -1,6 +1,8 @@
 {
     "Daemon": {
         "ReaderHost": "192.168.1.79",
-        "ReaderPort": 4333
+        "ReaderPort": 4333,
+        "GatewayAddress": "http://192.168.1.77:3000",
+        "ControlPointId": "123"
     }
 }
