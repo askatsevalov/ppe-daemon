@@ -3,6 +3,8 @@
         "ReaderHost": "192.168.1.79",
         "ReaderPort": 4333,
         "GatewayAddress": "http://192.168.1.77:3000",
-        "ControlPointId": "123"
+        "ControlPointId": "e6d87c9e-e13a-48eb-a62b-5d02908a9bd5",
+        "TxLevel": 8
+        
     }
 }

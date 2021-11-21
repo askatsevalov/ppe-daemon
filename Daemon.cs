@@ -86,7 +86,7 @@ namespace daemon
         void hNur_ConnectedEvent(object sender, NurApi.NurEventArgs e)
         {
             _logger.LogInformation("Reader - Connected to reader");
-            hNur.TxLevel = 10;
+            hNur.TxLevel = _config.Value.TxLevel;
         }
 
         void hNur_DisconnectedEvent(object sender, NurApi.NurEventArgs e)

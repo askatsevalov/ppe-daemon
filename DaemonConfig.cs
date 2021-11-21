@@ -8,5 +8,6 @@ namespace daemon
         public int ReaderPort { get; set; }
         public string GatewayAddress { get; set; }
         public string ControlPointId { get; set; }
+        public int TxLevel { get; set; }
     }
 }
